@@ -1,0 +1,10 @@
+node_modules/
+server/node_modules/
+server/db.json
+server/db.json.tmp
+server/events.log
+server/backups/
+server/portals/
+server/*.tmp
+*.log
+.DS_Store
