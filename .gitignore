@@ -8,3 +8,4 @@ server/portals/
 server/*.tmp
 *.log
 .DS_Store
+eleve-deploy.zip

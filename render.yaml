@@ -11,4 +11,15 @@ services:
     plan: free
     region: virginia   # same region as the Neon database
     rootDir: server
-    buildCommand: npm 
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false

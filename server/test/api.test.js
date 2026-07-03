@@ -84,4 +84,6 @@ test("legacy admin content publish", async () => {
 });
 
 test("unauth content publish blocked", async () => {
-  const r = aw
+  const r = await j("POST","/api/content",{content:{}});
+  assert.equal(r.status,401);
+});

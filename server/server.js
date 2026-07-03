@@ -637,4 +637,49 @@ app.get("/api/admin/insights",(req,res)=>{ const u=authUser(req); if(!u||u.role!
   let pendingApprovals=0, openComments=0, portalCount=0, clientMsgs=0; const activity=[];
   db.users.filter(x=>x.role==="user").forEach(x=>{ const d=loadPortal(x.id); if(!d) return; portalCount++;
     pendingApprovals+=(d.approvals||[]).filter(a=>a.status==="pending").length;
-    const C=d.comments||{}; for(const k in C) op
+    const C=d.comments||{}; for(const k in C) openComments+=(C[k]||[]).length;
+    (d.threads||[]).forEach(t=>{ clientMsgs+=t.messages.filter(m=>m.by==="client").length; });
+    (d.activity||[]).slice(0,20).forEach(a=>activity.push({ t:a.t, by:a.by, who:a.who, text:a.text, client:x.email }));
+  });
+  activity.sort((a,b)=>b.t-a.t);
+  const A=db.analytics||[], pv={}, ev={}, perDay={}, dayCut=Date.now()-7*86400000;
+  A.forEach(a=>{ ev[a.event]=(ev[a.event]||0)+1; if(a.event==="pageview") pv[a.page]=(pv[a.page]||0)+1;
+    if(a.t>=dayCut){ const key=new Date(a.t).toISOString().slice(0,10); perDay[key]=(perDay[key]||0)+1; } });
+  res.json({
+    live: liveCounts(),
+    totals: { users:db.users.length, admins:byRole.admin, editors:byRole.editor, designers:byRole.designer, clients:byRole.user,
+      staff:byRole.admin+byRole.editor+byRole.designer, builderProjects:(db.projects||[]).length, portals:portalCount,
+      subscribers:(db.subscribers||[]).length, messages:(db.messages||[]).length, consults:(db.consults||[]).length,
+      pendingApprovals, openComments, clientMsgs },
+    analytics: { total:A.length, pageviews:pv, events:ev, perDay },
+    activity: activity.slice(0,40),
+    events: tailEvents(60),
+    enquiries: { messages:(db.messages||[]).slice(0,10), consults:(db.consults||[]).slice(0,10) }
+  });
+});
+
+/* ---------- static site ---------- */
+app.use(express.static(SITE, { extensions:["html"], setHeaders:function(res,fp){
+  if(/\.(js|css|mp3|wav|glb|svg|png|jpg|jpeg|webp|woff2?)$/i.test(fp)) res.setHeader("Cache-Control","public, max-age=604800");
+  else if(/\.html$/i.test(fp)) res.setHeader("Cache-Control","no-cache");
+} }));
+app.use((req,res)=>{ res.status(404); if(req.accepts("html")) return res.sendFile(path.join(SITE,"404.html"),err=>{ if(err) res.send("Not found"); }); res.json({error:"Not found"}); });
+
+app.ready = pgInit();          // resolves immediately when DATABASE_URL is not set
+app.ready.catch(()=>{});       // avoid unhandled-rejection kill when used as a module; main mode handles it below
+if (require.main === module) {
+  app.ready.then(()=>{
+  backup(); setInterval(backup, 1000*60*60*6);
+  ["SIGTERM","SIGINT"].forEach(sig=>process.on(sig, ()=>{  // flush pending writes on shutdown (deploys, spin-down)
+    try{ clearTimeout(saveT); writeDbNow(); }catch(e){}
+    Promise.resolve(pgFlush()).catch(()=>{}).then(()=>process.exit(0));
+  }));
+  app.listen(PORT, ()=>{
+    console.log("Elevé server \u2192 http://localhost:"+PORT);
+    console.log("Admin password: "+(process.env.ADMIN_PASSWORD?"(env)":"eleve-admin (default \u2014 change it)"));
+    console.log("Persistence: "+(PG_URL?"Postgres (DATABASE_URL)":"local JSON file (dev)"));
+    console.log("Billing: "+(STRIPE_KEY?"Stripe key present":"not configured (set STRIPE_SECRET)"));
+  });
+  }).catch(e=>{ console.error("FATAL: could not reach Postgres (DATABASE_URL): "+e.message); process.exit(1); });
+}
+module.exports = app;
